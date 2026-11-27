@@ -160,6 +160,7 @@
     display: grid; place-items: center; font: 700 12px/1 var(--font-body); }
   .pin.done { background: #9FB9BE; }
   .pin.pin-start { background: #C99A2E; width: 34px; height: 34px; font-size: 11px; }
+  .arrow { width: 16px; height: 16px; color: #fff; font-size: 11px; line-height: 16px; text-align: center; background: #0B4F5C; border-radius: 50%; }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #2F7CF6; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,124,246,.25); }
   .loading { text-align: center; color: var(--muted); padding: 48px 0; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -230,7 +231,7 @@
       </div>
       <div id="map" role="img" aria-label="大阪城公園のルート地図"></div>
       <ol class="route-steps" id="route-steps"></ol>
-      <p class="route-note">行きと帰りは同じ道です。時刻は1つのお題に4分かける場合の目安です。</p>
+      <p class="route-note">矢印の向きに一周します。時刻は1つのお題に3分かける場合の目安です。</p>
     </section>
 
     <div class="missions" id="missions"><div class="loading">お題を読み込んでいます…</div></div>

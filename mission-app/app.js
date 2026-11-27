@@ -12,19 +12,25 @@
   // データの保存先（本番：Supabase ／ デモ：この端末のメモリ）
   // ─────────────────────────────────────────────
   // チームの回る順番から、スポットと目安時刻を計算する
+  // 一周ルートを、チームの向き（時計回り／反時計回り）に進んだときの目安時刻
   function planFor(no) {
+    const tr = CFG.teamRoutes[no];
+    const total = CFG.loopMinutes;
+    const at = (spot) => tr.direction === 'ccw' ? total - spot.pos : spot.pos;
     const start = new Date(CFG.startTime).getTime();
-    let t = 0, pos = 0;
-    const steps = CFG.teamRoutes[no].map(([mid, key], i) => {
+    let t = 0, cur = 0;
+    const steps = tr.stops.map(([mid, key], i) => {
       const spot = CFG.spots[key];
-      t += Math.abs(spot.pos - pos);
-      pos = spot.pos;
+      t += Math.max(0, at(spot) - cur);
+      cur = Math.max(cur, at(spot));
       const step = { mid: mid, order: i + 1, spot: spot, at: new Date(start + t * 60000) };
       t += CFG.minutesPerMission;
       return step;
     });
-    const back = new Date(start + (t + pos) * 60000);
-    return { steps: steps, back: back };
+    return { steps: steps, back: new Date(start + (t + total - cur) * 60000), direction: tr.direction };
+  }
+  function directionText(dir) {
+    return dir === 'ccw' ? '反時計回り（先に太陽の広場へ）' : '時計回り（先に青屋門へ）';
   }
   function hhmm(d) {
     return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
@@ -308,9 +314,9 @@
       li.append(el('span', 't', time), el('span', 'n ' + cls, num), el('span', '', text));
       ol.appendChild(li);
     };
-    row(hhmm(new Date(CFG.startTime)), '集', 's', CFG.meetingPoint.name + 'を出発');
+    row(hhmm(new Date(CFG.startTime)), '集', 's', CFG.meetingPoint.name + 'を出発：' + directionText(plan.direction));
     plan.steps.forEach((st) => row(hhmm(st.at), String(st.order), doneIds.has(st.mid) ? 'ok' : '', st.spot.name + '：' + CFG.missions[st.mid].title));
-    row(hhmm(plan.back), '集', 's', '集合場所に戻る（16:20 まで）');
+    row(hhmm(plan.back), '集', 's', '集合場所に戻る（' + hhmm(new Date(CFG.deadline)) + ' まで）');
 
     if (!window.L) { $('map').hidden = true; return; }
     if (!map) {
@@ -322,6 +328,7 @@
       pinLayer = L.layerGroup().addTo(map);
     }
     pinLayer.clearLayers();
+    addArrows(pinLayer, plan.direction);
     const mp = CFG.meetingPoint;
     L.marker([mp.lat, mp.lng], { icon: pinIcon('集合', 'pin-start'), title: mp.name }).addTo(pinLayer);
 
@@ -343,6 +350,20 @@
       mapTeam = team.no;
     }
     setTimeout(() => map.invalidateSize(), 0);
+  }
+
+  // 進む向きを示す矢印をルート上に置く
+  function addArrows(layer, dir) {
+    const pts = (window.TORUZO_ROUTE || []).slice();
+    if (pts.length < 2) return;
+    if (dir === 'ccw') pts.reverse();
+    [0.12, 0.33, 0.55, 0.75, 0.92].forEach((f) => {
+      const i = Math.min(pts.length - 2, Math.floor(f * (pts.length - 1)));
+      const a = pts[i], b = pts[i + 1];
+      const deg = Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI;
+      L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], { interactive: false, icon: L.divIcon({ className: '',
+        html: '<div class="arrow" style="transform:rotate(' + deg.toFixed(0) + 'deg)">▲</div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(layer);
+    });
   }
 
   $('locate-btn').onclick = () => {
