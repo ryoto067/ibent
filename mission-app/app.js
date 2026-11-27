@@ -2,7 +2,7 @@
   'use strict';
 
   const CFG = window.TORUZO_CONFIG;
-  const TEAM_NOS = Object.keys(CFG.teamMissions).map(Number).sort((a, b) => a - b);
+  const TEAM_NOS = Object.keys(CFG.teamRoutes).map(Number).sort((a, b) => a - b);
   const STORE_KEY = 'toruzo-team';
   const BUCKET = 'photos';
 
@@ -11,10 +11,29 @@
   // ─────────────────────────────────────────────
   // データの保存先（本番：Supabase ／ デモ：この端末のメモリ）
   // ─────────────────────────────────────────────
+  // チームの回る順番から、スポットと目安時刻を計算する
+  function planFor(no) {
+    const start = new Date(CFG.startTime).getTime();
+    let t = 0, pos = 0;
+    const steps = CFG.teamRoutes[no].map(([mid, key], i) => {
+      const spot = CFG.spots[key];
+      t += Math.abs(spot.pos - pos);
+      pos = spot.pos;
+      const step = { mid: mid, order: i + 1, spot: spot, at: new Date(start + t * 60000) };
+      t += CFG.minutesPerMission;
+      return step;
+    });
+    const back = new Date(start + (t + pos) * 60000);
+    return { steps: steps, back: back };
+  }
+  function hhmm(d) {
+    return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
+  }
+
   function buildMissions(no, photos) {
-    return CFG.teamMissions[no].map((mid, i) => Object.assign(
-      { id: mid, order: i + 1, photos: photos.filter((p) => p.mission === mid) },
-      CFG.missions[mid]
+    return planFor(no).steps.map((st) => Object.assign(
+      { id: st.mid, order: st.order, spot: st.spot.name, at: hhmm(st.at), photos: photos.filter((p) => p.mission === st.mid) },
+      CFG.missions[st.mid]
     ));
   }
 
@@ -236,7 +255,7 @@
       const body = el('div', 'm-body');
       body.appendChild(el('span', 'tag', m.tag));
       if (isDone) body.appendChild(el('span', 'clear', 'クリア'));
-      body.append(el('h2', 'm-title', m.title), el('p', 'm-desc', m.desc));
+      body.append(el('h2', 'm-title', m.title), el('p', 'm-desc', m.desc), el('div', 'm-spot', '📍 ' + m.spot + '　目安 ' + m.at));
       head.append(el('div', 'm-no', isDone ? '✓' : String(m.order)), body);
 
       const grid = el('div', 'photos');
@@ -270,7 +289,86 @@
     $('done-bar').style.width = (done / team.missions.length * 100) + '%';
     $('best-box').hidden = !best;
     if (best) $('best-img').src = best.large;
+    renderRoute();
   }
+
+  // ── ルートの地図 ──
+  let map = null, mapTeam = null, pinLayer = null, meMarker = null, watchId = null;
+  const pinIcon = (label, cls) => L.divIcon({ className: '', html: '<div class="pin ' + cls + '">' + label + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+
+  function renderRoute() {
+    const plan = planFor(team.no);
+    const doneIds = new Set(team.missions.filter((m) => m.photos.length).map((m) => m.id));
+
+    // 順番の一覧
+    const ol = $('route-steps');
+    ol.textContent = '';
+    const row = (time, num, cls, text) => {
+      const li = el('li');
+      li.append(el('span', 't', time), el('span', 'n ' + cls, num), el('span', '', text));
+      ol.appendChild(li);
+    };
+    row(hhmm(new Date(CFG.startTime)), '集', 's', CFG.meetingPoint.name + 'を出発');
+    plan.steps.forEach((st) => row(hhmm(st.at), String(st.order), doneIds.has(st.mid) ? 'ok' : '', st.spot.name + '：' + CFG.missions[st.mid].title));
+    row(hhmm(plan.back), '集', 's', '集合場所に戻る（16:20 まで）');
+
+    if (!window.L) { $('map').hidden = true; return; }
+    if (!map) {
+      map = L.map('map', { zoomControl: true, attributionControl: true, scrollWheelZoom: false, tap: true });
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+      L.polyline(window.TORUZO_ROUTE || [], { color: '#0B7488', weight: 6, opacity: 0.8 }).addTo(map);
+      pinLayer = L.layerGroup().addTo(map);
+    }
+    pinLayer.clearLayers();
+    const mp = CFG.meetingPoint;
+    L.marker([mp.lat, mp.lng], { icon: pinIcon('集合', 'pin-start'), title: mp.name }).addTo(pinLayer);
+
+    // 同じスポットのお題は1つのピンにまとめる
+    const bySpot = new Map();
+    plan.steps.forEach((st) => {
+      const k = st.spot.name;
+      if (!bySpot.has(k)) bySpot.set(k, { spot: st.spot, nums: [], done: true });
+      const g = bySpot.get(k);
+      g.nums.push(st.order);
+      if (!doneIds.has(st.mid)) g.done = false;
+    });
+    bySpot.forEach((g) => {
+      L.marker([g.spot.lat, g.spot.lng], { icon: pinIcon(g.nums.join('・'), g.done ? 'done' : ''), title: g.spot.name })
+        .bindPopup(g.spot.name).addTo(pinLayer);
+    });
+    if (mapTeam !== team.no) {
+      map.fitBounds(L.latLngBounds((window.TORUZO_ROUTE || []).concat([[mp.lat, mp.lng]])), { padding: [24, 24] });
+      mapTeam = team.no;
+    }
+    setTimeout(() => map.invalidateSize(), 0);
+  }
+
+  $('locate-btn').onclick = () => {
+    if (!navigator.geolocation || !map) { toast('この端末では現在地を表示できません', true); return; }
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      if (meMarker) { map.removeLayer(meMarker); meMarker = null; }
+      $('locate-btn').textContent = '現在地を表示';
+      return;
+    }
+    $('locate-btn').textContent = '現在地を探しています…';
+    let first = true;
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      if (!meMarker) meMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 1000 }).addTo(map);
+      else meMarker.setLatLng(ll);
+      if (first) { map.panTo(ll); first = false; }
+      $('locate-btn').textContent = '現在地を隠す';
+    }, (err) => {
+      toast(err.code === 1 ? '位置情報の利用が許可されていません。設定で許可してください' : '現在地を取得できませんでした', true);
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      $('locate-btn').textContent = '現在地を表示';
+    }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+  };
 
   // ── チーム名 ──
   async function saveName(name) {

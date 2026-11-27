@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="とるぞ！">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap">
@@ -142,6 +143,24 @@
     background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100% - 32px); }
   .toast.err { background: var(--danger); }
   .demo { background: var(--gold); color: #fff; text-align: center; font-size: 12px; padding: 4px 8px; }
+  .route { margin-bottom: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .route-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; }
+  .route-head h2 { font-family: var(--font-display); font-size: 16px; margin: 0; color: var(--teal-deep); }
+  .locate { border: 1px solid var(--teal); color: var(--teal); background: none; border-radius: 99px; font-size: 12px; font-weight: 700; padding: 5px 12px; }
+  #map { height: 300px; background: var(--teal-soft); }
+  .route-steps { list-style: none; margin: 0; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .route-steps li { display: flex; gap: 8px; align-items: baseline; }
+  .route-steps .t { flex: none; width: 42px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .route-steps .n { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--teal); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+  .route-steps .n.s { background: var(--gold); }
+  .route-steps .n.ok { background: var(--line); color: var(--teal-deep); }
+  .route-note { font-size: 12px; color: var(--muted); padding: 0 14px 12px; margin: 0; }
+  .m-spot { font-size: 12px; color: var(--teal); font-weight: 700; margin-top: 4px; }
+  .pin { width: max-content; min-width: 26px; height: 26px; padding: 0 5px; border-radius: 13px; background: #0B7488; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    display: grid; place-items: center; font: 700 12px/1 var(--font-body); }
+  .pin.done { background: #9FB9BE; }
+  .pin.pin-start { background: #C99A2E; width: 34px; height: 34px; font-size: 11px; }
+  .me { width: 16px; height: 16px; border-radius: 50%; background: #2F7CF6; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,124,246,.25); }
   .loading { text-align: center; color: var(--muted); padding: 48px 0; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -204,6 +223,16 @@
       </div>
     </div>
 
+    <section class="route" aria-label="ルート">
+      <div class="route-head">
+        <h2>チームのルート</h2>
+        <button class="locate" id="locate-btn">現在地を表示</button>
+      </div>
+      <div id="map" role="img" aria-label="大阪城公園のルート地図"></div>
+      <ol class="route-steps" id="route-steps"></ol>
+      <p class="route-note">行きと帰りは同じ道です。時刻は1つのお題に4分かける場合の目安です。</p>
+    </section>
+
     <div class="missions" id="missions"><div class="loading">お題を読み込んでいます…</div></div>
 
     <div class="best-box" id="best-box" hidden>
@@ -220,7 +249,7 @@
         <li>16:20 までに集合場所へ戻る。間に合わなそうなら撮影を切り上げる</li>
         <li>石垣には登らない（大阪城跡は国の特別史跡です）</li>
         <li>歩きながら撮影しない・知らない人の顔が写らないように撮る</li>
-        <li>お題の順番は自由。おすすめ順に並んでいます</li>
+        <li>お題はルートの順番に並んでいます。順番を変えてもOK</li>
         <li>写真をタップすると「ベストショットに選ぶ」「削除」ができます</li>
       </ul>
     </div>
@@ -255,7 +284,9 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="config.js"></script>
+<script src="route.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
